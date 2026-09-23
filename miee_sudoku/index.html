@@ -11,12 +11,23 @@
   <div class="logo">Sudoku<span>.com</span></div>
   <div class="top-controls">
     <div class="difficulty-wrap">
-      <label for="difficulty">Difficulty:</label>
-      <select id="difficulty">
+      <label for="difficulty" style="font-weight:700;color:var(--muted);font-size:12px;">Level:</label>
+      <div class="diff-pills" id="diffPills">
+        <button class="diff-pill" data-diff="easy">Easy</button>
+        <button class="diff-pill active" data-diff="medium">Medium</button>
+        <button class="diff-pill" data-diff="hard">High</button>
+        <button class="diff-pill" data-diff="expert">Pro</button>
+        <button class="diff-pill" data-diff="custom">Custom</button>
+      </div>
+      <div id="customBlocksWrap" class="custom-blocks hidden">
+        <label for="blocksRange" style="display:flex;align-items:center;gap:6px;">Blocks <input type="range" id="blocksRange" min="20" max="64" value="50" step="1"><span id="blocksVal">50</span></label>
+      </div>
+      <select id="difficulty" style="display:none;">
         <option value="easy">Easy</option>
         <option value="medium" selected>Medium</option>
         <option value="hard">Hard</option>
         <option value="expert">Expert</option>
+        <option value="custom">Custom</option>
       </select>
     </div>
   </div>
@@ -34,6 +45,7 @@
       <button id="pauseBtn" class="icon-btn small" title="Pause/Resume">⏸</button>
     </div>
     <div class="stat">
+      <div id="bestScore" class="best-score" title="Best time for this difficulty">🏆 Best: <strong>—</strong></div>
       <button id="newGameTop" class="btn secondary small">New Game</button>
     </div>
   </div>

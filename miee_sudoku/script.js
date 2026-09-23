@@ -15,6 +15,11 @@ const winModal = document.getElementById('winModal');
 const loseModal = document.getElementById('loseModal');
 const confirmModal = document.getElementById('confirmModal');
 const hintModal = document.getElementById('hintModal');
+const bestScoreEl = document.getElementById('bestScore');
+const diffPills = document.querySelectorAll('.diff-pill');
+const customBlocksWrap = document.getElementById('customBlocksWrap');
+const blocksRange = document.getElementById('blocksRange');
+const blocksVal = document.getElementById('blocksVal');
 
 let solution = [];
 let puzzle = [];
@@ -31,6 +36,9 @@ let seconds = 0;
 let isPaused = false;
 let gameOver = false;
 let highlightedNumber = null; // for numpad highlight
+let celebratedRows = new Set();
+let celebratedCols = new Set();
+let celebratedBoxes = new Set();
 
 const DIFFICULTY_CLUES = {
   easy: 40,     // cells to remove
@@ -85,20 +93,157 @@ function generateSolved(){
 function generatePuzzle(difficulty){
   const sol=generateSolved();
   const puz=sol.map(row=>[...row]);
-  const cellsToRemove = DIFFICULTY_CLUES[difficulty] || 50;
+  let cellsToRemove = DIFFICULTY_CLUES[difficulty];
+  if(difficulty==='custom'){
+    cellsToRemove = parseInt(blocksRange ? blocksRange.value : 50, 10);
+  }
+  if(cellsToRemove==null) cellsToRemove = 50;
+  cellsToRemove = Math.max(20, Math.min(64, cellsToRemove));
   let removed=0;
   const positions=[];
   for(let r=0;r<9;r++) for(let c=0;c<9;c++) positions.push([r,c]);
   shuffle(positions);
   for(const [r,c] of positions){
     if(removed>=cellsToRemove) break;
-    const backup=puz[r][c];
     puz[r][c]=0;
-    // simple uniqueness skip for speed: keep removal, not checking uniqueness for MVP
-    // For better puzzle could check solvability but we accept.
     removed++;
   }
   return {sol,puz};
+}
+
+// ---------- Best Score (localStorage) ----------
+function getDifficultyKey(){
+  const d = difficultyEl.value;
+  if(d==='custom' && blocksRange) return `custom_${blocksRange.value}`;
+  return d;
+}
+function formatTime(sec){
+  const m=String(Math.floor(sec/60)).padStart(2,'0');
+  const s=String(sec%60).padStart(2,'0');
+  return `${m}:${s}`;
+}
+function loadBest(key){
+  try{ const v = localStorage.getItem(`sudoku_best_${key}`); return v ? parseInt(v,10) : null; } catch(e){ return null; }
+}
+function saveBest(key, sec){
+  try{ localStorage.setItem(`sudoku_best_${key}`, String(sec)); } catch(e){}
+}
+function updateBestDisplay(){
+  if(!bestScoreEl) return;
+  const key = getDifficultyKey();
+  const best = loadBest(key);
+  const strong = bestScoreEl.querySelector('strong');
+  if(best!=null){
+    if(strong) strong.textContent = formatTime(best);
+    bestScoreEl.classList.add('is-best');
+    bestScoreEl.title = `Best for ${key}: ${formatTime(best)} — try to beat it!`;
+  } else {
+    if(strong) strong.textContent = '—';
+    bestScoreEl.classList.remove('is-best');
+    bestScoreEl.title = 'No best yet — finish a game to set one!';
+  }
+}
+function updateDifficultyPills(){
+  const cur = difficultyEl.value;
+  diffPills.forEach(p=> p.classList.toggle('active', p.dataset.diff===cur));
+  if(customBlocksWrap){
+    if(cur==='custom') customBlocksWrap.classList.remove('hidden');
+    else customBlocksWrap.classList.add('hidden');
+  }
+  if(blocksVal && blocksRange) blocksVal.textContent = blocksRange.value;
+}
+
+// ---------- Celebration helpers ----------
+function isRowComplete(r){
+  for(let c=0;c<9;c++) if(board[r][c]===0 || board[r][c]!==solution[r][c]) return false;
+  return true;
+}
+function isColComplete(c){
+  for(let r=0;r<9;r++) if(board[r][c]===0 || board[r][c]!==solution[r][c]) return false;
+  return true;
+}
+function isBoxComplete(boxIdx){
+  const br=Math.floor(boxIdx/3)*3, bc=(boxIdx%3)*3;
+  for(let i=0;i<3;i++) for(let j=0;j<3;j++){
+    const r=br+i, c=bc+j;
+    if(board[r][c]===0 || board[r][c]!==solution[r][c]) return false;
+  }
+  return true;
+}
+function spawnSparkles(cell){
+  const positions = [{l:'12%',t:'12%'},{l:'68%',t:'18%'},{l:'22%',t:'72%'},{l:'75%',t:'68%'}];
+  positions.forEach((pos,i)=>{
+    const sp=document.createElement('span');
+    sp.className='sparkle';
+    sp.style.left=pos.l;
+    sp.style.top=pos.t;
+    sp.style.animationDelay=`${i*0.07}s`;
+    sp.style.transform=`rotate(${i*18}deg)`;
+    cell.appendChild(sp);
+  });
+}
+function celebrateCells(cells){
+  cells.forEach((cell,idx)=>{
+    if(!cell) return;
+    cell.classList.remove('celebrate');
+    void cell.offsetWidth;
+    cell.style.animationDelay = `${idx*0.045}s`;
+    cell.classList.add('celebrate');
+    spawnSparkles(cell);
+    setTimeout(()=>{ cell.classList.remove('celebrate'); cell.style.animationDelay=''; const sps=cell.querySelectorAll('.sparkle'); sps.forEach(s=>s.remove()); }, 1200);
+  });
+}
+function celebrateRow(r){
+  const cells=[];
+  for(let c=0;c<9;c++) cells.push(boardEl.querySelector(`[data-r="${r}"][data-c="${c}"]`));
+  celebrateCells(cells);
+}
+function celebrateCol(c){
+  const cells=[];
+  for(let r=0;r<9;r++) cells.push(boardEl.querySelector(`[data-r="${r}"][data-c="${c}"]`));
+  celebrateCells(cells);
+}
+function celebrateBox(boxIdx){
+  const br=Math.floor(boxIdx/3)*3, bc=(boxIdx%3)*3;
+  const cells=[];
+  for(let i=0;i<3;i++) for(let j=0;j<3;j++) cells.push(boardEl.querySelector(`[data-r="${br+i}"][data-c="${bc+j}"]`));
+  celebrateCells(cells);
+}
+function checkAndCelebrateLines(){
+  if(gameOver || isPaused) return;
+  // rows
+  for(let r=0;r<9;r++){
+    const complete=isRowComplete(r);
+    if(complete && !celebratedRows.has(r)){
+      celebratedRows.add(r);
+      celebrateRow(r);
+      if(navigator.vibrate) navigator.vibrate(35);
+    } else if(!complete && celebratedRows.has(r)){
+      celebratedRows.delete(r);
+    }
+  }
+  // cols
+  for(let c=0;c<9;c++){
+    const complete=isColComplete(c);
+    if(complete && !celebratedCols.has(c)){
+      celebratedCols.add(c);
+      celebrateCol(c);
+      if(navigator.vibrate) navigator.vibrate(35);
+    } else if(!complete && celebratedCols.has(c)){
+      celebratedCols.delete(c);
+    }
+  }
+  // boxes
+  for(let b=0;b<9;b++){
+    const complete=isBoxComplete(b);
+    if(complete && !celebratedBoxes.has(b)){
+      celebratedBoxes.add(b);
+      celebrateBox(b);
+      if(navigator.vibrate) navigator.vibrate([30,40,30]);
+    } else if(!complete && celebratedBoxes.has(b)){
+      celebratedBoxes.delete(b);
+    }
+  }
 }
 
 // ---------- Game Init ----------
@@ -117,9 +262,14 @@ function initGame(difficulty){
   isPaused=false;
   gameOver=false;
   isNotesMode=false;
+  celebratedRows=new Set();
+  celebratedCols=new Set();
+  celebratedBoxes=new Set();
   updateNotesButton();
   updateMistakes();
   updateTimer();
+  updateBestDisplay();
+  updateDifficultyPills();
   startTimer();
   hideAllModals();
   renderBoard();
@@ -353,6 +503,7 @@ function placeNumber(num){
     }
   } else {
     renderBoard();
+    checkAndCelebrateLines();
   }
   updateNumpadState();
   checkWin();
@@ -368,6 +519,8 @@ function eraseCell(){
   notes[r][c].clear();
   renderBoard();
   updateNumpadState();
+  // after erase, allow re-celebration if line broken
+  checkAndCelebrateLines();
 }
 function undo(){
   if(history.length===0 || gameOver) return;
@@ -377,6 +530,7 @@ function undo(){
   // mistakes are NOT undone (common Sudoku rule) – keep as is
   renderBoard();
   updateNumpadState();
+  checkAndCelebrateLines();
 }
 let pendingHint = null;
 
@@ -516,6 +670,7 @@ function applyHint(){
   pendingHint=null;
   hintModal.classList.add('hidden');
   renderBoard();
+  checkAndCelebrateLines();
   updateNumpadState();
   checkWin();
 }
@@ -523,7 +678,16 @@ function checkWin(){
   for(let r=0;r<9;r++) for(let c=0;c<9;c++) if(board[r][c]!==solution[r][c]) return;
   gameOver=true;
   clearInterval(timerInterval);
-  document.getElementById('winTime').textContent=`Time: ${timerEl.textContent}`;
+  // best score handling
+  const key=getDifficultyKey();
+  const prevBest=loadBest(key);
+  let isNewBest=false;
+  if(prevBest==null || seconds < prevBest){
+    saveBest(key, seconds);
+    isNewBest=true;
+  }
+  updateBestDisplay();
+  document.getElementById('winTime').textContent=`Time: ${timerEl.textContent}${isNewBest ? ' — 🏆 New Best!' : ''}`;
   document.getElementById('winMistakes').textContent=`Mistakes: ${mistakes}/${maxMistakes}`;
   winModal.classList.remove('hidden');
 }
@@ -581,19 +745,14 @@ document.getElementById('loseNewGame').addEventListener('click',()=>{
   initGame(difficultyEl.value);
 });
 difficultyEl.addEventListener('change',()=>{
-  // immediate new game on difficulty change after confirm
+  updateDifficultyPills();
+  updateBestDisplay();
   requestNewGame();
-  // if user canceled, revert select to previous? keep simple: if canceled, revert
-  // Check if modal is open, on cancel revert
   const revert = ()=>{
     if(!confirmModal.classList.contains('hidden')){
-      // wait for decision, handled via confirmNo -> we need to revert if canceled
-      // attach one-time listener
       const handler=()=>{
-        if(confirmModal.classList.contains('hidden') && !gameOver && JSON.stringify(board)===JSON.stringify(puzzle)){
-          // new game started, do nothing
+        if(confirmModal.classList.contains('hidden') && JSON.stringify(board)===JSON.stringify(puzzle)){
         } else if(confirmModal.classList.contains('hidden')){
-          // canceled, revert dropdown to current game's difficulty? For simplicity keep chosen value
         }
         document.getElementById('confirmNo').removeEventListener('click', handler);
       };
@@ -602,6 +761,49 @@ difficultyEl.addEventListener('change',()=>{
   };
   setTimeout(revert,10);
 });
+// Difficulty pills
+diffPills.forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const diff=btn.dataset.diff;
+    if(difficultyEl.value===diff) return;
+    difficultyEl.value=diff;
+    updateDifficultyPills();
+    updateBestDisplay();
+    requestNewGame();
+    const revert2=()=>{
+      if(!confirmModal.classList.contains('hidden')){
+        const handler2=()=>{
+          if(confirmModal.classList.contains('hidden') && JSON.stringify(board)===JSON.stringify(puzzle)){
+          } else if(confirmModal.classList.contains('hidden')){
+            // canceled: revert pills UI
+            updateDifficultyPills();
+            updateBestDisplay();
+          }
+          document.getElementById('confirmNo').removeEventListener('click', handler2);
+        };
+        document.getElementById('confirmNo').addEventListener('click', handler2);
+      }
+    };
+    setTimeout(revert2,10);
+  });
+});
+if(blocksRange){
+  blocksRange.addEventListener('input',()=>{
+    if(blocksVal) blocksVal.textContent=blocksRange.value;
+    // update key display for custom
+    if(difficultyEl.value==='custom') updateBestDisplay();
+  });
+  blocksRange.addEventListener('change',()=>{
+    if(difficultyEl.value==='custom'){
+      updateBestDisplay();
+      // if already on custom and pristine, regenerate immediately
+      const isPristine = JSON.stringify(board)===JSON.stringify(puzzle) && mistakes===0 && seconds<2;
+      if(isPristine){
+        initGame('custom');
+      }
+    }
+  });
+}
 
 // Keyboard support
 document.addEventListener('keydown',(e)=>{
