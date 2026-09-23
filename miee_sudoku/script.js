@@ -836,30 +836,34 @@ diffPills.forEach(btn=>{
     setTimeout(revert2,10);
   });
 });
+function smoothBoardSwitch(nextFn){
+  boardEl.style.transition='opacity 0.22s ease, transform 0.22s ease';
+  boardEl.style.opacity='0';
+  boardEl.style.transform='scale(0.98)';
+  setTimeout(()=>{
+    nextFn();
+    requestAnimationFrame(()=>{
+      boardEl.style.opacity='1';
+      boardEl.style.transform='scale(1)';
+    });
+    setTimeout(()=>{ boardEl.style.transition=''; boardEl.style.transform=''; }, 300);
+  }, 180);
+}
 sizePills.forEach(btn=>{
   btn.addEventListener('click',()=>{
     const sz=Number(btn.dataset.size);
-    if(customSize===sz) return;
-    customSize=sz;
-    sizePills.forEach(p=> p.classList.toggle('active', Number(p.dataset.size)===sz));
-    updateBestDisplay();
-    // ensure Custom is selected
+    // ensure Custom is selected visually
     if(difficultyEl.value!=='custom'){
       difficultyEl.value='custom';
-      updateDifficultyPills();
     }
-    const isPristine = JSON.stringify(board)===JSON.stringify(puzzle) && mistakes===0 && seconds<2;
-    if(isPristine){
-      initGame('custom');
-    } else {
-      // prompt new game, if canceled revert handled by requestNewGame flow
-      // just update display
-    }
-    // if not pristine, will start new game on confirm
-    if(!isPristine){
-      // trigger confirm modal logic via temporary init attempt
-      // keep selection but don't auto-start
-    }
+    const sameSize = customSize===sz;
+    customSize=sz;
+    updateDifficultyPills();
+    updateBestDisplay();
+    hideAllModals();
+    // smooth auto-change instantly, no New Game click needed
+    if(sameSize && BOARD_N===sz) return;
+    smoothBoardSwitch(()=> initGame('custom'));
   });
 });
 
