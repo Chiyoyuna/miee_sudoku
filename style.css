@@ -147,15 +147,7 @@ body{
   transform: none !important;
   box-shadow: none !important;
 }
-.cell:nth-child(3n){ border-right:1px solid var(--border-strong); }
-.cell:nth-child(9n){ border-right:none; }
-.cell:nth-child(n+19):nth-child(-n+27),
-.cell:nth-child(n+46):nth-child(-n+54){
-  border-bottom:1px solid var(--border-strong);
-}
-/* thicker top for box separators via nth, simpler: use JS borders alternative is above */
-/* Add vertical thick lines: every 3rd column */
-.cell:nth-child(3n+1){ border-left:none; }
+/* Thick box borders now handled dynamically via JS inline styles for 4x4/6x6/9x9 */
 
 /* Notes grid inside cell */
 .notes{
@@ -445,43 +437,45 @@ body{
 .cell.celebrate:nth-child(9n+2){ animation-delay: 0.04s; }
 .cell.celebrate:nth-child(9n+3){ animation-delay: 0.08s; }
 
-/* Difficulty pills - small aesthetic */
+/* Difficulty pills - bigger aesthetic */
 .diff-pills{
   display:flex;
-  gap:6px;
+  gap:8px;
   align-items:center;
   flex-wrap:wrap;
 }
 .diff-pill{
-  padding:4px 10px;
-  font-size:12px;
-  font-weight:700;
-  border:1px solid var(--border);
+  padding:7px 16px;
+  font-size:14px;
+  font-weight:800;
+  border:1.5px solid var(--border);
   background:#fff;
   color:var(--muted);
   border-radius:999px;
   cursor:pointer;
   transition: all 0.15s;
   line-height:1;
+  min-height:32px;
 }
-.diff-pill:hover{ border-color:var(--primary); color:var(--primary); transform: translateY(-1px); }
+.diff-pill:hover{ border-color:var(--primary); color:var(--primary); transform: translateY(-1px); box-shadow: 0 2px 8px rgba(255,122,162,0.2); }
 .diff-pill.active{
   background: var(--primary);
   color:#fff;
   border-color:var(--primary);
-  box-shadow: 0 2px 8px rgba(255,122,162,0.35);
+  box-shadow: 0 3px 10px rgba(255,122,162,0.4);
+  transform: translateY(-1px);
 }
 .custom-blocks{
   display:flex;
   align-items:center;
   gap:8px;
-  font-size:12px;
-  font-weight:600;
+  font-size:13px;
+  font-weight:700;
   color:var(--muted);
   background:#fff;
-  border:1px solid var(--border);
+  border:1.5px solid var(--border);
   border-radius:999px;
-  padding:4px 10px;
+  padding:6px 12px;
 }
 .custom-blocks.hidden{ display:none; }
 .custom-blocks input[type="range"]{
@@ -498,6 +492,19 @@ body{
   padding:2px 6px;
   font-size:11px;
 }
+.size-pill{
+  padding:6px 13px;
+  font-size:13px;
+  font-weight:800;
+  border:1.5px solid var(--border);
+  background:#fff;
+  color:var(--muted);
+  border-radius:999px;
+  cursor:pointer;
+  transition: all 0.15s;
+}
+.size-pill:hover{ border-color:var(--primary); color:var(--primary); }
+.size-pill.active{ background:var(--primary); color:#fff; border-color:var(--primary); box-shadow:0 2px 8px rgba(255,122,162,0.35); }
 .topbar{
   flex-wrap:wrap;
   gap:10px;

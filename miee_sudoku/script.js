@@ -18,8 +18,7 @@ const hintModal = document.getElementById('hintModal');
 const bestScoreEl = document.getElementById('bestScore');
 const diffPills = document.querySelectorAll('.diff-pill');
 const customBlocksWrap = document.getElementById('customBlocksWrap');
-const blocksRange = document.getElementById('blocksRange');
-const blocksVal = document.getElementById('blocksVal');
+const sizePills = document.querySelectorAll('.size-pill');
 
 let solution = [];
 let puzzle = [];
@@ -39,6 +38,10 @@ let highlightedNumber = null; // for numpad highlight
 let celebratedRows = new Set();
 let celebratedCols = new Set();
 let celebratedBoxes = new Set();
+let BOARD_N = 9;
+let BOX_H = 3;
+let BOX_W = 3;
+let customSize = 9; // for Custom mode 4/6/9
 
 const DIFFICULTY_CLUES = {
   easy: 40,     // cells to remove
@@ -46,6 +49,31 @@ const DIFFICULTY_CLUES = {
   hard: 58,
   expert: 64
 };
+const DIFFICULTY_CLUES_MAP = {
+  9: { easy: 40, medium: 50, hard: 58, expert: 64, custom: 50 },
+  6: { easy: 12, medium: 18, hard: 22, expert: 26, custom: 18 },
+  4: { easy: 4,  medium: 6,  hard: 8,  expert: 10, custom: 6 }
+};
+
+function getBoxDims(n){
+  if(n===4) return [2,2];
+  if(n===6) return [2,3];
+  return [3,3];
+}
+function setBoardSize(n){
+  BOARD_N = n;
+  [BOX_H, BOX_W] = getBoxDims(n);
+  boardEl.style.gridTemplateColumns = `repeat(${n},1fr)`;
+  boardEl.style.gridTemplateRows = `repeat(${n},1fr)`;
+  // numpad: show 1..n, hide rest
+  document.querySelectorAll('.numpad button').forEach(btn=>{
+    const v=Number(btn.dataset.num);
+    btn.style.display = v<=n ? '' : 'none';
+  });
+  // also update numpad grid columns dynamically
+  const np=document.getElementById('numpad');
+  if(np) np.style.gridTemplateColumns=`repeat(${n},1fr)`;
+}
 
 // ---------- Sudoku Generator ----------
 function shuffle(arr){
@@ -55,23 +83,23 @@ function shuffle(arr){
   }
   return arr;
 }
-function createEmptyBoard(){
-  return Array.from({length:9},()=>Array(9).fill(0));
+function createEmptyBoard(n = BOARD_N){
+  return Array.from({length:n},()=>Array(n).fill(0));
 }
 function isValid(board,r,c,val){
-  for(let i=0;i<9;i++){
+  for(let i=0;i<BOARD_N;i++){
     if(board[r][i]===val) return false;
     if(board[i][c]===val) return false;
   }
-  const br=Math.floor(r/3)*3, bc=Math.floor(c/3)*3;
-  for(let i=0;i<3;i++) for(let j=0;j<3;j++) if(board[br+i][bc+j]===val) return false;
+  const br=Math.floor(r/BOX_H)*BOX_H, bc=Math.floor(c/BOX_W)*BOX_W;
+  for(let i=0;i<BOX_H;i++) for(let j=0;j<BOX_W;j++) if(board[br+i][bc+j]===val) return false;
   return true;
 }
 function solveBoard(board){
-  for(let r=0;r<9;r++){
-    for(let c=0;c<9;c++){
+  for(let r=0;r<BOARD_N;r++){
+    for(let c=0;c<BOARD_N;c++){
       if(board[r][c]===0){
-        const nums=shuffle([1,2,3,4,5,6,7,8,9]);
+        const nums=shuffle(Array.from({length:BOARD_N},(_,i)=>i+1));
         for(const n of nums){
           if(isValid(board,r,c,n)){
             board[r][c]=n;
@@ -91,17 +119,26 @@ function generateSolved(){
   return b;
 }
 function generatePuzzle(difficulty){
+  // decide board size
+  let size = BOARD_N;
+  if(difficulty==='custom'){
+    size = customSize;
+    setBoardSize(size);
+  } else {
+    size = 9;
+    setBoardSize(size);
+  }
   const sol=generateSolved();
   const puz=sol.map(row=>[...row]);
-  let cellsToRemove = DIFFICULTY_CLUES[difficulty];
-  if(difficulty==='custom'){
-    cellsToRemove = parseInt(blocksRange ? blocksRange.value : 50, 10);
-  }
-  if(cellsToRemove==null) cellsToRemove = 50;
-  cellsToRemove = Math.max(20, Math.min(64, cellsToRemove));
+  const map = DIFFICULTY_CLUES_MAP[size] || DIFFICULTY_CLUES_MAP[9];
+  let cellsToRemove = map[difficulty];
+  if(difficulty==='custom') cellsToRemove = map.custom;
+  if(cellsToRemove==null) cellsToRemove = Math.floor(size*size*0.55);
+  const maxRemove = size*size - size;
+  cellsToRemove = Math.max(0, Math.min(maxRemove, cellsToRemove));
   let removed=0;
   const positions=[];
-  for(let r=0;r<9;r++) for(let c=0;c<9;c++) positions.push([r,c]);
+  for(let r=0;r<size;r++) for(let c=0;c<size;c++) positions.push([r,c]);
   shuffle(positions);
   for(const [r,c] of positions){
     if(removed>=cellsToRemove) break;
@@ -114,8 +151,8 @@ function generatePuzzle(difficulty){
 // ---------- Best Score (localStorage) ----------
 function getDifficultyKey(){
   const d = difficultyEl.value;
-  if(d==='custom' && blocksRange) return `custom_${blocksRange.value}`;
-  return d;
+  if(d==='custom') return `custom_${customSize}`;
+  return `${BOARD_N}_${d}`;
 }
 function formatTime(sec){
   const m=String(Math.floor(sec/60)).padStart(2,'0');
@@ -150,21 +187,22 @@ function updateDifficultyPills(){
     if(cur==='custom') customBlocksWrap.classList.remove('hidden');
     else customBlocksWrap.classList.add('hidden');
   }
-  if(blocksVal && blocksRange) blocksVal.textContent = blocksRange.value;
+  sizePills.forEach(p=> p.classList.toggle('active', Number(p.dataset.size)===customSize));
 }
 
 // ---------- Celebration helpers ----------
 function isRowComplete(r){
-  for(let c=0;c<9;c++) if(board[r][c]===0 || board[r][c]!==solution[r][c]) return false;
+  for(let c=0;c<BOARD_N;c++) if(board[r][c]===0 || board[r][c]!==solution[r][c]) return false;
   return true;
 }
 function isColComplete(c){
-  for(let r=0;r<9;r++) if(board[r][c]===0 || board[r][c]!==solution[r][c]) return false;
+  for(let r=0;r<BOARD_N;r++) if(board[r][c]===0 || board[r][c]!==solution[r][c]) return false;
   return true;
 }
 function isBoxComplete(boxIdx){
-  const br=Math.floor(boxIdx/3)*3, bc=(boxIdx%3)*3;
-  for(let i=0;i<3;i++) for(let j=0;j<3;j++){
+  const cols = BOARD_N / BOX_W;
+  const br=Math.floor(boxIdx / cols)*BOX_H, bc=(boxIdx % cols)*BOX_W;
+  for(let i=0;i<BOX_H;i++) for(let j=0;j<BOX_W;j++){
     const r=br+i, c=bc+j;
     if(board[r][c]===0 || board[r][c]!==solution[r][c]) return false;
   }
@@ -195,24 +233,25 @@ function celebrateCells(cells){
 }
 function celebrateRow(r){
   const cells=[];
-  for(let c=0;c<9;c++) cells.push(boardEl.querySelector(`[data-r="${r}"][data-c="${c}"]`));
+  for(let c=0;c<BOARD_N;c++) cells.push(boardEl.querySelector(`[data-r="${r}"][data-c="${c}"]`));
   celebrateCells(cells);
 }
 function celebrateCol(c){
   const cells=[];
-  for(let r=0;r<9;r++) cells.push(boardEl.querySelector(`[data-r="${r}"][data-c="${c}"]`));
+  for(let r=0;r<BOARD_N;r++) cells.push(boardEl.querySelector(`[data-r="${r}"][data-c="${c}"]`));
   celebrateCells(cells);
 }
 function celebrateBox(boxIdx){
-  const br=Math.floor(boxIdx/3)*3, bc=(boxIdx%3)*3;
+  const cols = BOARD_N / BOX_W;
+  const br=Math.floor(boxIdx / cols)*BOX_H, bc=(boxIdx % cols)*BOX_W;
   const cells=[];
-  for(let i=0;i<3;i++) for(let j=0;j<3;j++) cells.push(boardEl.querySelector(`[data-r="${br+i}"][data-c="${bc+j}"]`));
+  for(let i=0;i<BOX_H;i++) for(let j=0;j<BOX_W;j++) cells.push(boardEl.querySelector(`[data-r="${br+i}"][data-c="${bc+j}"]`));
   celebrateCells(cells);
 }
 function checkAndCelebrateLines(){
   if(gameOver || isPaused) return;
   // rows
-  for(let r=0;r<9;r++){
+  for(let r=0;r<BOARD_N;r++){
     const complete=isRowComplete(r);
     if(complete && !celebratedRows.has(r)){
       celebratedRows.add(r);
@@ -223,7 +262,7 @@ function checkAndCelebrateLines(){
     }
   }
   // cols
-  for(let c=0;c<9;c++){
+  for(let c=0;c<BOARD_N;c++){
     const complete=isColComplete(c);
     if(complete && !celebratedCols.has(c)){
       celebratedCols.add(c);
@@ -234,7 +273,8 @@ function checkAndCelebrateLines(){
     }
   }
   // boxes
-  for(let b=0;b<9;b++){
+  const numBoxes = BOARD_N;
+  for(let b=0;b<numBoxes;b++){
     const complete=isBoxComplete(b);
     if(complete && !celebratedBoxes.has(b)){
       celebratedBoxes.add(b);
@@ -248,12 +288,18 @@ function checkAndCelebrateLines(){
 
 // ---------- Game Init ----------
 function initGame(difficulty){
+  // set size first so generatePuzzle uses correct BOARD_N
+  if(difficulty==='custom'){
+    setBoardSize(customSize);
+  } else {
+    setBoardSize(9);
+  }
   const {sol,puz}=generatePuzzle(difficulty);
   solution=sol;
   puzzle=puz;
   board=puz.map(r=>[...r]);
   fixed=puz.map(r=>r.map(v=>v!==0));
-  notes=Array.from({length:9},()=>Array.from({length:9},()=>new Set()));
+  notes=Array.from({length:BOARD_N},()=>Array.from({length:BOARD_N},()=>new Set()));
   history=[];
   selected=null;
   highlightedNumber=null;
@@ -352,38 +398,38 @@ function triggerWrongFeedback(){
 // ---------- Rendering ----------
 function renderBoard(){
   boardEl.innerHTML='';
-  // determine the number to highlight: highlightedNumber (from numpad) takes priority, else selected cell value
+  boardEl.style.gridTemplateColumns = `repeat(${BOARD_N},1fr)`;
+  boardEl.style.gridTemplateRows = `repeat(${BOARD_N},1fr)`;
   let highlightNum = highlightedNumber;
   if(selected){
     const sv = board[selected.r][selected.c];
     if(sv!==0) highlightNum = sv;
   }
-  for(let r=0;r<9;r++){
-    for(let c=0;c<9;c++){
+  for(let r=0;r<BOARD_N;r++){
+    for(let c=0;c<BOARD_N;c++){
       const cell=document.createElement('div');
       cell.className='cell';
       cell.dataset.r=r;
       cell.dataset.c=c;
+      // dynamic thick borders for boxes
+      if((c+1)%BOX_W===0 && c!==BOARD_N-1) cell.style.borderRight='2px solid var(--border-strong)';
+      if((r+1)%BOX_H===0 && r!==BOARD_N-1) cell.style.borderBottom='2px solid var(--border-strong)';
 
-      // highlight states - row/col/box from selected
       if(selected && selected.r===r && selected.c===c) cell.classList.add('selected');
       else if(selected){
         const sr=selected.r, sc=selected.c;
         const sameRow = r===sr;
         const sameCol = c===sc;
-        const sameBox = Math.floor(r/3)===Math.floor(sr/3) && Math.floor(c/3)===Math.floor(sc/3);
+        const sameBox = Math.floor(r/BOX_H)===Math.floor(sr/BOX_H) && Math.floor(c/BOX_W)===Math.floor(sc/BOX_W);
         if(sameRow || sameCol || sameBox) cell.classList.add('highlight');
       }
-      // same-number highlight everywhere (selection or numpad)
       if(highlightNum!==null && board[r][c]===highlightNum) cell.classList.add('same-number');
 
       if(fixed[r][c]) cell.classList.add('fixed');
-      // persistent red for wrong cells until changed
       if(board[r][c]!==0 && !fixed[r][c] && board[r][c]!==solution[r][c]){
         cell.classList.add('error-persist');
       }
 
-      // value or notes
       if(board[r][c]!==0){
         const v=document.createElement('div');
         v.className='value';
@@ -392,7 +438,9 @@ function renderBoard(){
       } else if(notes[r][c].size>0){
         const ng=document.createElement('div');
         ng.className='notes';
-        for(let n=1;n<=9;n++){
+        // notes grid adapts to BOARD_N
+        ng.style.gridTemplateColumns=`repeat(${Math.ceil(Math.sqrt(BOARD_N))},1fr)`;
+        for(let n=1;n<=BOARD_N;n++){
           const s=document.createElement('span');
           s.textContent=notes[r][c].has(n)?n:'';
           ng.appendChild(s);
@@ -431,15 +479,19 @@ function updateNotesButton(){
   }
 }
 function updateNumpadState(){
-  const counts=Array(10).fill(0);
-  for(let r=0;r<9;r++) for(let c=0;c<9;c++) if(board[r][c]!==0) counts[board[r][c]]++;
+  const counts=Array(BOARD_N+1).fill(0);
+  for(let r=0;r<BOARD_N;r++) for(let c=0;c<BOARD_N;c++) if(board[r][c]!==0) counts[board[r][c]]++;
   document.querySelectorAll('.numpad button').forEach(btn=>{
     const n=Number(btn.dataset.num);
-    if(counts[n]>=9) btn.classList.add('used');
+    if(n>BOARD_N){ btn.style.display='none'; return; }
+    btn.style.display='';
+    if(counts[n]>=BOARD_N) btn.classList.add('used');
     else btn.classList.remove('used');
     if(highlightedNumber===n) btn.classList.add('active-num');
     else btn.classList.remove('active-num');
   });
+  const np=document.getElementById('numpad');
+  if(np) np.style.gridTemplateColumns=`repeat(${BOARD_N},1fr)`;
 }
 
 // ---------- Game Actions ----------
@@ -476,14 +528,13 @@ function placeNumber(num){
   notes[r][c].clear();
   board[r][c]=num;
 
-  // auto remove this note from peers (like sudoku.com)
-  for(let i=0;i<9;i++){
-    // row
-    if(notes[r][i].has(num)) { /* we keep history only for current cell, peer note removal not undoable for simplicity */ notes[r][i].delete(num); }
+  // auto remove this note from peers
+  for(let i=0;i<BOARD_N;i++){
+    if(notes[r][i].has(num)) notes[r][i].delete(num);
     if(notes[i][c].has(num)) notes[i][c].delete(num);
   }
-  const br=Math.floor(r/3)*3, bc=Math.floor(c/3)*3;
-  for(let i=0;i<3;i++) for(let j=0;j<3;j++) notes[br+i][bc+j].delete(num);
+  const br=Math.floor(r/BOX_H)*BOX_H, bc=Math.floor(c/BOX_W)*BOX_W;
+  for(let i=0;i<BOX_H;i++) for(let j=0;j<BOX_W;j++) notes[br+i][bc+j].delete(num);
 
   // highlight this number everywhere
   highlightedNumber = num;
@@ -539,27 +590,26 @@ function getHintExplanation(r,c){
   const rowVals = new Set();
   const colVals = new Set();
   const boxVals = new Set();
-  for(let i=0;i<9;i++){
+  for(let i=0;i<BOARD_N;i++){
     if(board[r][i]!==0) rowVals.add(board[r][i]);
     if(board[i][c]!==0) colVals.add(board[i][c]);
   }
-  const br=Math.floor(r/3)*3, bc=Math.floor(c/3)*3;
-  for(let i=0;i<3;i++) for(let j=0;j<3;j++){
+  const br=Math.floor(r/BOX_H)*BOX_H, bc=Math.floor(c/BOX_W)*BOX_W;
+  for(let i=0;i<BOX_H;i++) for(let j=0;j<BOX_W;j++){
     const v=board[br+i][bc+j];
     if(v!==0) boxVals.add(v);
   }
   const allBlocked = new Set([...rowVals, ...colVals, ...boxVals]);
   const candidates = [];
-  for(let n=1;n<=9;n++) if(!allBlocked.has(n)) candidates.push(n);
-  // also find blocking cells for visual
+  for(let n=1;n<=BOARD_N;n++) if(!allBlocked.has(n)) candidates.push(n);
   const rowBlocks = [];
   const colBlocks = [];
   const boxBlocks = [];
-  for(let i=0;i<9;i++){
+  for(let i=0;i<BOARD_N;i++){
     if(board[r][i]!==0) rowBlocks.push({r, c:i, val:board[r][i]});
     if(board[i][c]!==0) colBlocks.push({r:i, c, val:board[i][c]});
   }
-  for(let i=0;i<3;i++) for(let j=0;j<3;j++){
+  for(let i=0;i<BOX_H;i++) for(let j=0;j<BOX_W;j++){
     const rr=br+i, cc=bc+j;
     if(board[rr][cc]!==0) boxBlocks.push({r:rr,c:cc,val:board[rr][cc]});
   }
@@ -569,14 +619,15 @@ function getHintExplanation(r,c){
 function renderHintVisual(r,c,info){
   const visual=document.getElementById('hintVisual');
   visual.innerHTML='';
-  for(let rr=0;rr<9;rr++){
-    for(let cc=0;cc<9;cc++){
+  visual.style.gridTemplateColumns=`repeat(${BOARD_N},1fr)`;
+  for(let rr=0;rr<BOARD_N;rr++){
+    for(let cc=0;cc<BOARD_N;cc++){
       const div=document.createElement('div');
       div.className='hm-cell';
       const isTarget = rr===r && cc===c;
       const sameRow = rr===r;
       const sameCol = cc===c;
-      const sameBox = Math.floor(rr/3)===Math.floor(info.br/3) && Math.floor(cc/3)===Math.floor(info.bc/3);
+      const sameBox = Math.floor(rr/BOX_H)===Math.floor(info.br/BOX_H) && Math.floor(cc/BOX_W)===Math.floor(info.bc/BOX_W);
       if(isTarget) div.classList.add('hm-target');
       else if(sameRow && sameCol) div.classList.add('hm-overlap');
       else if(sameRow && sameBox) div.classList.add('hm-overlap');
@@ -587,46 +638,44 @@ function renderHintVisual(r,c,info){
       if(board[rr][cc]!==0){
         div.textContent=board[rr][cc];
         div.classList.add('hm-fixed');
-        // highlight cells that block candidates (contain numbers that are in allBlocked)
         if(!isTarget && info.allBlocked.has(board[rr][cc]) && (sameRow||sameCol||sameBox)){
           div.classList.add('hm-block');
         }
       } else if(isTarget){
         div.textContent='?';
       }
-      // thick box borders via inline
-      // add border hints via style (grid gap already)
       visual.appendChild(div);
     }
   }
 }
 
 function buildHintExplainHTML(r,c,info){
-  const posLabel = `Row ${r+1}, Column ${c+1} (Box ${Math.floor(r/3)*3+Math.floor(c/3)+1})`;
+  const cols = BOARD_N / BOX_W;
+  const boxId = Math.floor(r/BOX_H)*cols+Math.floor(c/BOX_W)+1;
+  const posLabel = `Row ${r+1}, Column ${c+1} (Box ${boxId}, ${BOX_H}×${BOX_W})`;
   const rowList = info.rowVals.length? info.rowVals.join(', ') : 'none yet';
   const colList = info.colVals.length? info.colVals.join(', ') : 'none yet';
   const boxList = info.boxVals.length? info.boxVals.join(', ') : 'none yet';
-  const blockedList = [...info.allBlocked].sort((a,b)=>a-b).join(', ') || 'none';
   let html='';
   html+=`<div class="ex-line">📍 <strong>${posLabel}</strong> is empty. The correct value is <strong>${info.ans}</strong>.</div>`;
   html+=`<div class="ex-line">• Row <strong>${r+1}</strong> already has: <strong>${rowList}</strong> → those numbers can't go here.</div>`;
   html+=`<div class="ex-line">• Column <strong>${c+1}</strong> already has: <strong>${colList}</strong> → blocked.</div>`;
-  html+=`<div class="ex-line">• Its 3×3 box (rows ${info.br+1}-${info.br+3}, cols ${info.bc+1}-${info.bc+3}) already has: <strong>${boxList}</strong>.</div>`;
+  html+=`<div class="ex-line">• Its ${BOX_H}×${BOX_W} box (rows ${info.br+1}-${info.br+BOX_H}, cols ${info.bc+1}-${info.bc+BOX_W}) already has: <strong>${boxList}</strong>.</div>`;
   if(info.candidates.length>1){
-    html+=`<div class="ex-line">So remaining candidates after elimination are: <strong>${info.candidates.join(', ')}</strong>. Only <strong>${info.ans}</strong> keeps the puzzle solvable to the unique solution (checked by solver).</div>`;
+    html+=`<div class="ex-line">So remaining candidates after elimination are: <strong>${info.candidates.join(', ')}</strong>. Only <strong>${info.ans}</strong> keeps the puzzle solvable.</div>`;
   } else if(info.candidates.length===1){
-    html+=`<div class="ex-line">✅ Only <strong>${info.ans}</strong> remains after elimination — every other digit 1-9 is already present in its row, column, or box.</div>`;
+    html+=`<div class="ex-line">✅ Only <strong>${info.ans}</strong> remains after elimination — every other digit 1-${BOARD_N} is already present.</div>`;
   } else {
-    html+=`<div class="ex-line">All 1-9 appear blocked by current board, but the solution requires <strong>${info.ans}</strong> here (you may have a mistake elsewhere).</div>`;
+    html+=`<div class="ex-line">All 1-${BOARD_N} appear blocked, but the solution requires <strong>${info.ans}</strong> here (you may have a mistake elsewhere).</div>`;
   }
   html+=`<div class="ex-candidates">`;
-  for(let n=1;n<=9;n++){
+  for(let n=1;n<=BOARD_N;n++){
     const cls = n===info.ans ? 'cand answer' : info.allBlocked.has(n) ? 'cand blocked' : 'cand';
     const title = n===info.ans ? 'Answer' : info.allBlocked.has(n) ? 'Blocked' : 'Possible but invalid';
     html+=`<span class="${cls}" title="${title}">${n}</span>`;
   }
   html+=`</div>`;
-  html+=`<div class="ex-line" style="margin-top:8px;color:var(--muted);font-size:12px;">Visual: yellow = target, blue = row/col, green = box, red outline = cells blocking other numbers. Tap “Fill Answer” to place <strong>${info.ans}</strong>.</div>`;
+  html+=`<div class="ex-line" style="margin-top:8px;color:var(--muted);font-size:12px;">Visual: yellow = target, blue = row/col, green = box, red outline = blocking numbers. Tap “Fill Answer” to place <strong>${info.ans}</strong>.</div>`;
   return html;
 }
 
@@ -636,20 +685,20 @@ function hint(){
   if(selected && board[selected.r][selected.c]===0 && !fixed[selected.r][selected.c]){
     target=selected;
   } else {
-    outer: for(let rr=0;rr<9;rr++) for(let cc=0;cc<9;cc++) if(board[rr][cc]===0 && !fixed[rr][cc]){ target={r:rr,c:cc}; break outer; }
+    outer: for(let rr=0;rr<BOARD_N;rr++) for(let cc=0;cc<BOARD_N;cc++) if(board[rr][cc]===0 && !fixed[rr][cc]){ target={r:rr,c:cc}; break outer; }
   }
   if(!target) return;
   const {r,c}=target;
   const info=getHintExplanation(r,c);
   pendingHint={r,c, ans:info.ans};
-  document.getElementById('hintTarget').textContent=`Cell R${r+1} × C${c+1} — Box ${Math.floor(r/3)*3+Math.floor(c/3)+1}`;
+  const cols = BOARD_N / BOX_W;
+  const boxId = Math.floor(r/BOX_H)*cols+Math.floor(c/BOX_W)+1;
+  document.getElementById('hintTarget').textContent=`Cell R${r+1} × C${c+1} — Box ${boxId} (${BOARD_N}×${BOARD_N})`;
   document.getElementById('hintAnswer').textContent=info.ans;
   renderHintVisual(r,c,info);
   document.getElementById('hintExplain').innerHTML=buildHintExplainHTML(r,c,info);
-  // highlight on main board temporarily
   selected={r,c};
   renderBoard();
-  // add pulse
   setTimeout(()=>{
     const cell=boardEl.querySelector(`[data-r="${r}"][data-c="${c}"]`);
     if(cell) cell.classList.add('hint-highlight');
@@ -663,9 +712,9 @@ function applyHint(){
   pushHistory(r,c);
   board[r][c]=ans;
   notes[r][c].clear();
-  for(let i=0;i<9;i++){ notes[r][i].delete(ans); notes[i][c].delete(ans); }
-  const br=Math.floor(r/3)*3, bc=Math.floor(c/3)*3;
-  for(let i=0;i<3;i++) for(let j=0;j<3;j++) notes[br+i][bc+j].delete(ans);
+  for(let i=0;i<BOARD_N;i++){ notes[r][i].delete(ans); notes[i][c].delete(ans); }
+  const br=Math.floor(r/BOX_H)*BOX_H, bc=Math.floor(c/BOX_W)*BOX_W;
+  for(let i=0;i<BOX_H;i++) for(let j=0;j<BOX_W;j++) notes[br+i][bc+j].delete(ans);
   selected={r,c};
   pendingHint=null;
   hintModal.classList.add('hidden');
@@ -675,7 +724,7 @@ function applyHint(){
   checkWin();
 }
 function checkWin(){
-  for(let r=0;r<9;r++) for(let c=0;c<9;c++) if(board[r][c]!==solution[r][c]) return;
+  for(let r=0;r<BOARD_N;r++) for(let c=0;c<BOARD_N;c++) if(board[r][c]!==solution[r][c]) return;
   gameOver=true;
   clearInterval(timerInterval);
   // best score handling
@@ -787,34 +836,43 @@ diffPills.forEach(btn=>{
     setTimeout(revert2,10);
   });
 });
-if(blocksRange){
-  blocksRange.addEventListener('input',()=>{
-    if(blocksVal) blocksVal.textContent=blocksRange.value;
-    // update key display for custom
-    if(difficultyEl.value==='custom') updateBestDisplay();
-  });
-  blocksRange.addEventListener('change',()=>{
-    if(difficultyEl.value==='custom'){
-      updateBestDisplay();
-      // if already on custom and pristine, regenerate immediately
-      const isPristine = JSON.stringify(board)===JSON.stringify(puzzle) && mistakes===0 && seconds<2;
-      if(isPristine){
-        initGame('custom');
-      }
+sizePills.forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const sz=Number(btn.dataset.size);
+    if(customSize===sz) return;
+    customSize=sz;
+    sizePills.forEach(p=> p.classList.toggle('active', Number(p.dataset.size)===sz));
+    updateBestDisplay();
+    // ensure Custom is selected
+    if(difficultyEl.value!=='custom'){
+      difficultyEl.value='custom';
+      updateDifficultyPills();
+    }
+    const isPristine = JSON.stringify(board)===JSON.stringify(puzzle) && mistakes===0 && seconds<2;
+    if(isPristine){
+      initGame('custom');
+    } else {
+      // prompt new game, if canceled revert handled by requestNewGame flow
+      // just update display
+    }
+    // if not pristine, will start new game on confirm
+    if(!isPristine){
+      // trigger confirm modal logic via temporary init attempt
+      // keep selection but don't auto-start
     }
   });
-}
+});
 
 // Keyboard support
 document.addEventListener('keydown',(e)=>{
-  if(e.key>='1' && e.key<='9') placeNumber(Number(e.key));
+  if(e.key>='1' && e.key<=String(BOARD_N)) placeNumber(Number(e.key));
   else if(e.key==='Backspace' || e.key==='Delete' || e.key==='0') eraseCell();
   else if(e.key==='n' || e.key==='N'){ isNotesMode=!isNotesMode; updateNotesButton(); }
   else if((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); undo(); }
   else if(e.key==='ArrowUp' && selected){ e.preventDefault(); selectCell(Math.max(0,selected.r-1), selected.c); }
-  else if(e.key==='ArrowDown' && selected){ e.preventDefault(); selectCell(Math.min(8,selected.r+1), selected.c); }
+  else if(e.key==='ArrowDown' && selected){ e.preventDefault(); selectCell(Math.min(BOARD_N-1,selected.r+1), selected.c); }
   else if(e.key==='ArrowLeft' && selected){ e.preventDefault(); selectCell(selected.r, Math.max(0,selected.c-1)); }
-  else if(e.key==='ArrowRight' && selected){ e.preventDefault(); selectCell(selected.r, Math.min(8,selected.c+1)); }
+  else if(e.key==='ArrowRight' && selected){ e.preventDefault(); selectCell(selected.r, Math.min(BOARD_N-1,selected.c+1)); }
 });
 
 // Hint modal buttons

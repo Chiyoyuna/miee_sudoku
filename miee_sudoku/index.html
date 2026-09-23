@@ -11,7 +11,7 @@
   <div class="logo">Sudoku<span>.com</span></div>
   <div class="top-controls">
     <div class="difficulty-wrap">
-      <label for="difficulty" style="font-weight:700;color:var(--muted);font-size:12px;">Level:</label>
+      <label for="difficulty" style="font-weight:800;color:var(--muted);font-size:13px;">Level:</label>
       <div class="diff-pills" id="diffPills">
         <button class="diff-pill" data-diff="easy">Easy</button>
         <button class="diff-pill active" data-diff="medium">Medium</button>
@@ -20,7 +20,10 @@
         <button class="diff-pill" data-diff="custom">Custom</button>
       </div>
       <div id="customBlocksWrap" class="custom-blocks hidden">
-        <label for="blocksRange" style="display:flex;align-items:center;gap:6px;">Blocks <input type="range" id="blocksRange" min="20" max="64" value="50" step="1"><span id="blocksVal">50</span></label>
+        <span style="font-weight:800;font-size:12px;">Size:</span>
+        <button class="size-pill" data-size="4">4×4 <span style="font-weight:600;opacity:0.8;">1-4</span></button>
+        <button class="size-pill" data-size="6">6×6 <span style="font-weight:600;opacity:0.8;">1-6</span></button>
+        <button class="size-pill active" data-size="9">9×9 <span style="font-weight:600;opacity:0.8;">1-9</span></button>
       </div>
       <select id="difficulty" style="display:none;">
         <option value="easy">Easy</option>
