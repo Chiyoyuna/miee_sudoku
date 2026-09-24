@@ -97,19 +97,62 @@
 
 <!-- Modals -->
 <div id="winModal" class="modal hidden">
-  <div class="modal-content">
-    <h2>🎉 You Win!</h2>
-    <p id="winTime">Time: 00:00</p>
-    <p id="winMistakes"></p>
-    <button id="winNewGame" class="btn primary">New Game</button>
+  <div class="modal-content win-celebrate-content">
+    <div class="win-confetti" id="winConfetti"></div>
+    <!-- Loopy character that jumps -->
+    <div class="loopy-wrap">
+      <div class="loopy" id="loopyChar" aria-hidden="true">
+        <div class="loopy-ear loopy-ear-left"></div>
+        <div class="loopy-ear loopy-ear-right"></div>
+        <div class="loopy-head">
+          <div class="loopy-eye loopy-eye-left"></div>
+          <div class="loopy-eye loopy-eye-right"></div>
+          <div class="loopy-nose"></div>
+          <div class="loopy-mouth">
+            <div class="loopy-tooth"></div>
+            <div class="loopy-tongue"></div>
+          </div>
+          <div class="loopy-blush loopy-blush-left"></div>
+          <div class="loopy-blush loopy-blush-right"></div>
+        </div>
+        <div class="loopy-body">
+          <div class="loopy-belly"></div>
+          <div class="loopy-arm loopy-arm-left"></div>
+          <div class="loopy-arm loopy-arm-right"></div>
+        </div>
+        <div class="loopy-shadow"></div>
+      </div>
+    </div>
+    <h2 class="win-title">Yay! You Did It! 🎉</h2>
+    <p class="win-subtitle">Loopy is so proud of you!</p>
+    <div class="win-scores">
+      <div class="win-score-row">
+        <span class="win-score-label">⏱ Time</span>
+        <span class="win-score-value" id="winTime">00:00</span>
+      </div>
+      <div class="win-score-row">
+        <span class="win-score-label">❌ Mistakes</span>
+        <span class="win-score-value" id="winMistakes">0/3</span>
+      </div>
+      <div class="win-score-row win-best-row" id="winBestRow">
+        <span class="win-score-label">🏆 Best</span>
+        <span class="win-score-value" id="winBest">—</span>
+      </div>
+      <div id="winNewBestBadge" class="win-newbest hidden">✨ NEW BEST! ✨</div>
+    </div>
+    <button id="winNewGame" class="btn primary win-newgame-btn">Play Again</button>
   </div>
 </div>
 
 <div id="loseModal" class="modal hidden">
-  <div class="modal-content">
-    <h2>Game Over</h2>
-    <p>You made 3 mistakes.</p>
-    <button id="loseNewGame" class="btn primary">Try Again</button>
+  <div class="modal-content lose-content">
+    <h2>Oops! 3 Mistakes</h2>
+    <p>You've hit the limit. Want to keep trying or start fresh?</p>
+    <div class="modal-actions">
+      <button id="loseContinueBtn" class="btn primary">Continue Game</button>
+      <button id="loseNewGame" class="btn secondary">New Game</button>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-top:10px;">Continue keeps your current board & timer. Mistakes will stay at 3/3.</p>
   </div>
 </div>
 

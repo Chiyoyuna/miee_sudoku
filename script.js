@@ -190,24 +190,70 @@ function updateDifficultyPills(){
   sizePills.forEach(p=> p.classList.toggle('active', Number(p.dataset.size)===customSize));
 }
 
-// ---------- Celebration helpers ----------
-function isRowComplete(r){
-  for(let c=0;c<BOARD_N;c++) if(board[r][c]===0 || board[r][c]!==solution[r][c]) return false;
-  return true;
+// ---------- Validation helpers — rule-based, not solution-based ----------
+function hasConflict(bd, r, c){
+  const val = bd[r][c];
+  if(val===0) return false;
+  for(let i=0;i<BOARD_N;i++){
+    if(i!==c && bd[r][i]===val) return true;
+    if(i!==r && bd[i][c]===val) return true;
+  }
+  const br=Math.floor(r/BOX_H)*BOX_H, bc=Math.floor(c/BOX_W)*BOX_W;
+  for(let i=0;i<BOX_H;i++) for(let j=0;j<BOX_W;j++){
+    const rr=br+i, cc=bc+j;
+    if((rr!==r || cc!==c) && bd[rr][cc]===val) return true;
+  }
+  return false;
 }
-function isColComplete(c){
-  for(let r=0;r<BOARD_N;r++) if(board[r][c]===0 || board[r][c]!==solution[r][c]) return false;
-  return true;
+function isRowFilledValid(r){
+  const seen=new Set();
+  for(let c=0;c<BOARD_N;c++){
+    const v=board[r][c];
+    if(v===0) return false;
+    if(v<1 || v>BOARD_N) return false;
+    if(seen.has(v)) return false;
+    seen.add(v);
+  }
+  return seen.size===BOARD_N;
 }
-function isBoxComplete(boxIdx){
+function isColFilledValid(c){
+  const seen=new Set();
+  for(let r=0;r<BOARD_N;r++){
+    const v=board[r][c];
+    if(v===0) return false;
+    if(seen.has(v)) return false;
+    seen.add(v);
+  }
+  return seen.size===BOARD_N;
+}
+function isBoxFilledValid(boxIdx){
   const cols = BOARD_N / BOX_W;
   const br=Math.floor(boxIdx / cols)*BOX_H, bc=(boxIdx % cols)*BOX_W;
+  const seen=new Set();
   for(let i=0;i<BOX_H;i++) for(let j=0;j<BOX_W;j++){
-    const r=br+i, c=bc+j;
-    if(board[r][c]===0 || board[r][c]!==solution[r][c]) return false;
+    const v=board[br+i][bc+j];
+    if(v===0) return false;
+    if(seen.has(v)) return false;
+    seen.add(v);
   }
+  return seen.size===BOARD_N;
+}
+function isBoardFullyValid(){
+  // every cell filled and no conflicts
+  for(let r=0;r<BOARD_N;r++) for(let c=0;c<BOARD_N;c++){
+    if(board[r][c]===0) return false;
+    if(hasConflict(board,r,c)) return false;
+  }
+  // also verify each row/col/box contains 1..N exactly once (covered by above but double-check counts)
+  for(let r=0;r<BOARD_N;r++) if(!isRowFilledValid(r)) return false;
+  for(let c=0;c<BOARD_N;c++) if(!isColFilledValid(c)) return false;
+  for(let b=0;b<BOARD_N;b++) if(!isBoxFilledValid(b)) return false;
   return true;
 }
+// legacy names kept for celebrate logic — now rule-based
+function isRowComplete(r){ return isRowFilledValid(r); }
+function isColComplete(c){ return isColFilledValid(c); }
+function isBoxComplete(boxIdx){ return isBoxFilledValid(boxIdx); }
 function spawnSparkles(cell){
   const positions = [{l:'12%',t:'12%'},{l:'68%',t:'18%'},{l:'22%',t:'72%'},{l:'75%',t:'68%'}];
   positions.forEach((pos,i)=>{
@@ -426,7 +472,7 @@ function renderBoard(){
       if(highlightNum!==null && board[r][c]===highlightNum) cell.classList.add('same-number');
 
       if(fixed[r][c]) cell.classList.add('fixed');
-      if(board[r][c]!==0 && !fixed[r][c] && board[r][c]!==solution[r][c]){
+      if(board[r][c]!==0 && !fixed[r][c] && hasConflict(board,r,c)){
         cell.classList.add('error-persist');
       }
 
@@ -538,16 +584,21 @@ function placeNumber(num){
 
   // highlight this number everywhere
   highlightedNumber = num;
-  // check mistake
-  if(num !== solution[r][c]){
-    mistakes++;
-    updateMistakes();
+  // check mistake — rule-based: only if violates Sudoku rules (duplicate in row/col/box)
+  const isMistake = hasConflict(board,r,c);
+  if(isMistake){
+    // don't count beyond maxMistakes to allow "continue" without infinite popups
+    if(mistakes < maxMistakes){
+      mistakes++;
+      updateMistakes();
+    }
     triggerWrongFeedback();
     renderBoard();
     // keep red persistently via renderBoard error-persist; also flash
     const errCell = boardEl.querySelector(`[data-r="${r}"][data-c="${c}"]`);
     if(errCell){ errCell.classList.add('error-cell'); }
     if(mistakes>=maxMistakes){
+      // pause but give choice: Continue vs New Game
       gameOver=true;
       clearInterval(timerInterval);
       setTimeout(()=>loseModal.classList.remove('hidden'),400);
@@ -585,8 +636,38 @@ function undo(){
 }
 let pendingHint = null;
 
+// Dynamic hint solver — finds a valid value for (r,c) by solving current board
+function getHintAnsForCell(r,c){
+  // Try to solve a copy of the current board deterministically
+  function solveDeterministic(bd){
+    for(let rr=0;rr<BOARD_N;rr++) for(let cc=0;cc<BOARD_N;cc++) if(bd[rr][cc]===0){
+      for(let n=1;n<=BOARD_N;n++){
+        if(isValid(bd,rr,cc,n)){
+          bd[rr][cc]=n;
+          if(solveDeterministic(bd)) return true;
+          bd[rr][cc]=0;
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+  const copy = board.map(row=>[...row]);
+  const tryCopy = copy.map(row=>[...row]);
+  if(solveDeterministic(tryCopy)) return tryCopy[r][c];
+  // If board has conflicts (wrong entries), clean them and retry
+  const cleaned = board.map(row=>[...row]);
+  for(let rr=0;rr<BOARD_N;rr++) for(let cc=0;cc<BOARD_N;cc++){
+    if(cleaned[rr][cc]!==0 && hasConflict(cleaned,rr,cc) && !fixed[rr][cc]) cleaned[rr][cc]=0;
+  }
+  const tryCleaned = cleaned.map(row=>[...row]);
+  if(solveDeterministic(tryCleaned)) return tryCleaned[r][c];
+  // fallback to stored solution
+  return solution[r][c];
+}
+
 function getHintExplanation(r,c){
-  const ans = solution[r][c];
+  const ans = getHintAnsForCell(r,c);
   const rowVals = new Set();
   const colVals = new Set();
   const boxVals = new Set();
@@ -723,8 +804,64 @@ function applyHint(){
   updateNumpadState();
   checkWin();
 }
+function celebrateWholeBoard(){
+  // make ALL cells do little jump with staggered wave
+  const cells = boardEl.querySelectorAll('.cell');
+  boardEl.classList.add('win-celebrating');
+  cells.forEach((cell, idx)=>{
+    const r = Math.floor(idx / BOARD_N);
+    const c = idx % BOARD_N;
+    // wave from top-left to bottom-right
+    const delay = (r * 0.04 + c * 0.03);
+    cell.style.animationDelay = `${delay}s`;
+    // sparkle for every cell
+    // clear previous sparkles
+    cell.querySelectorAll('.sparkle').forEach(s=>s.remove());
+    // add celebrate class handled by board.win-celebrating, but also force sparkles
+    setTimeout(()=> spawnSparkles(cell), delay*1000);
+  });
+  // remove class after animation so board returns to normal
+  setTimeout(()=>{
+    boardEl.classList.remove('win-celebrating');
+    cells.forEach(c=>{
+      c.style.animationDelay='';
+      c.querySelectorAll('.sparkle').forEach(s=> setTimeout(()=>s.remove(), 600));
+    });
+  }, 1400);
+  if(navigator.vibrate) navigator.vibrate([40,30,60,30,80]);
+}
+function spawnConfetti(){
+  const container = document.getElementById('winConfetti');
+  if(!container) return;
+  container.innerHTML='';
+  const colors = ['#ff7aa2','#ffb700','#4dc9a0','#7ab8ff','#ff6b6b','#ffd700','#a78bfa','#ff9f43'];
+  const count = 32;
+  for(let i=0;i<count;i++){
+    const p = document.createElement('div');
+    p.className='confetti-piece';
+    p.style.left = Math.random()*100 + '%';
+    p.style.background = colors[Math.floor(Math.random()*colors.length)];
+    p.style.animationDuration = (0.9 + Math.random()*0.7) + 's';
+    p.style.animationDelay = (Math.random()*0.25) + 's';
+    p.style.transform = `rotate(${Math.random()*360}deg)`;
+    // random shape: some round
+    if(Math.random()>0.6) p.style.borderRadius='50%';
+    p.style.width = (6 + Math.random()*6) + 'px';
+    p.style.height = (8 + Math.random()*8) + 'px';
+    container.appendChild(p);
+  }
+}
+function restartLoopyJump(){
+  const loopy = document.getElementById('loopyChar');
+  if(!loopy) return;
+  loopy.style.animation='none';
+  void loopy.offsetWidth;
+  loopy.style.animation='';
+  // ensure jumping, not idle
+  loopy.classList.remove('idle');
+}
 function checkWin(){
-  for(let r=0;r<BOARD_N;r++) for(let c=0;c<BOARD_N;c++) if(board[r][c]!==solution[r][c]) return;
+  if(!isBoardFullyValid()) return;
   gameOver=true;
   clearInterval(timerInterval);
   // best score handling
@@ -736,9 +873,27 @@ function checkWin(){
     isNewBest=true;
   }
   updateBestDisplay();
-  document.getElementById('winTime').textContent=`Time: ${timerEl.textContent}${isNewBest ? ' — 🏆 New Best!' : ''}`;
-  document.getElementById('winMistakes').textContent=`Mistakes: ${mistakes}/${maxMistakes}`;
-  winModal.classList.remove('hidden');
+  // full board celebration: little jump for ALL boxes
+  celebrateWholeBoard();
+  // after a short stagger, show Loopy modal
+  setTimeout(()=>{
+    document.getElementById('winTime').textContent = formatTime(seconds);
+    document.getElementById('winMistakes').textContent = `${mistakes}/${maxMistakes}`;
+    const bestToShow = loadBest(key);
+    const bestEl = document.getElementById('winBest');
+    if(bestEl) bestEl.textContent = bestToShow!=null ? formatTime(bestToShow) : '—';
+    if(bestEl) bestEl.classList.toggle('is-new', isNewBest);
+    const badge = document.getElementById('winNewBestBadge');
+    if(badge) badge.classList.toggle('hidden', !isNewBest);
+    spawnConfetti();
+    restartLoopyJump();
+    winModal.classList.remove('hidden');
+    // Loopy continues jumping for 3.5s then settles to idle bob
+    setTimeout(()=>{
+      const loopy=document.getElementById('loopyChar');
+      if(loopy) loopy.classList.add('idle');
+    }, 3500);
+  }, 420);
 }
 function hideAllModals(){
   winModal.classList.add('hidden');
@@ -746,6 +901,12 @@ function hideAllModals(){
   confirmModal.classList.add('hidden');
   hintModal.classList.add('hidden');
   pendingHint=null;
+  // clean confetti & reset Loopy for next win
+  const conf=document.getElementById('winConfetti');
+  if(conf) setTimeout(()=>{ if(winModal.classList.contains('hidden')) conf.innerHTML=''; }, 300);
+  const loopy=document.getElementById('loopyChar');
+  if(loopy) loopy.classList.remove('idle');
+  boardEl.classList.remove('win-celebrating');
 }
 function requestNewGame(){
   // if board untouched, start directly
@@ -792,6 +953,17 @@ document.getElementById('winNewGame').addEventListener('click',()=>{
 document.getElementById('loseNewGame').addEventListener('click',()=>{
   hideAllModals();
   initGame(difficultyEl.value);
+});
+document.getElementById('loseContinueBtn').addEventListener('click',()=>{
+  // Continue the current game despite 3 mistakes
+  loseModal.classList.add('hidden');
+  gameOver=false;
+  isPaused=false;
+  boardEl.style.opacity='1';
+  boardEl.style.pointerEvents='auto';
+  pauseBtn.textContent='⏸';
+  startTimer();
+  renderBoard();
 });
 difficultyEl.addEventListener('change',()=>{
   updateDifficultyPills();
@@ -885,8 +1057,21 @@ document.getElementById('hintCloseBtn').addEventListener('click', ()=>{ hintModa
 document.getElementById('hintCloseX').addEventListener('click', ()=>{ hintModal.classList.add('hidden'); pendingHint=null; });
 
 // Close modal on backdrop click
-[winModal,loseModal,confirmModal,hintModal].forEach(m=>{
+[winModal,confirmModal,hintModal].forEach(m=>{
   m.addEventListener('click',(e)=>{ if(e.target===m){ m.classList.add('hidden'); if(m===hintModal) pendingHint=null; }});
+});
+loseModal.addEventListener('click',(e)=>{
+  if(e.target===loseModal){
+    // backdrop on lose = Continue Game (don't trap player)
+    loseModal.classList.add('hidden');
+    gameOver=false;
+    isPaused=false;
+    boardEl.style.opacity='1';
+    boardEl.style.pointerEvents='auto';
+    pauseBtn.textContent='⏸';
+    startTimer();
+    renderBoard();
+  }
 });
 
 // Init
